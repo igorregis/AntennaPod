@@ -322,6 +322,7 @@
   <string name="smart_shuffle">Embaralhamento inteligente</string>
   <string name="clear_queue_confirmation_msg">Por favor confirme que você deseja limpar TODOS os episódios da fila</string>
   <string name="time_left_label">Tempo restante:\u0020</string>
+
   <!--Variable Speed-->
   <string name="speed_presets">Presets</string>
   <string name="preset_already_exists">%1$.2fx foi salvo com um preset.</string>
@@ -785,4 +786,22 @@
   <string name="shortcut_subscription_label">Atalho da assinatura</string>
   <string name="shortcut_select_subscription">Selecione a assinatura</string>
   <string name="add_shortcut">Adicionar atalho</string>
+
+  <!-- Custom Queue Configuration -->
+  <string name="no_subscriptions_to_customize_queue_title">Sem Podcasts cadastrados</string>
+  <string name="add_subscriptions_to_customize_queue_text">Você pode cadastrar Podcasts para ter seus episódios automaticamente adicionados a esta fila</string>
+  <string name="save_custom_queue">Salvar</string>
+  <string name="add_item_custom_queue">Adicionar Podcast</string>
+  <string name="custom_queue_label">Fila Personalizada</string>
+  <string name="custom_queue_name_label">Nome da fila</string>
+  <string name="click_to_select_feed">Clique para selecionar um Podcast</string>
+  <string name="warning">Aviso</string>
+  <string name="type_name_for_custom_queue">Digite um nome para sua fila</string>
+  <string name="new_custom_queue">Nova fila</string>
+  <string name="edit_custom_queue">Editar fila</string>
+
+  <!-- Queue List Configuration -->
+  <string name="queue_list_label">Filas</string>
+  <string name="default_queue">Fila Padrão</string>
+
 </resources>

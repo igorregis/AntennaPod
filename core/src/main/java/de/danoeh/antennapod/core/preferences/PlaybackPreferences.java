@@ -39,6 +39,13 @@ public class PlaybackPreferences implements SharedPreferences.OnSharedPreference
     private static final String PREF_CURRENTLY_PLAYING_FEEDMEDIA_ID
             = "de.danoeh.antennapod.preferences.lastPlayedFeedMediaId";
 
+
+    /**
+     * Contains the id of currently queue being played, -1 if none, as it's the default playlist
+     */
+    private static final String PREF_CURRENTLY_PLAYING_FEEDMEDIA_QUEUE_ID = "de.danoeh.antennapod.preferences.lastPlayedFeedMediaQueueId";
+
+
     /**
      * Type of the media object that is currently being played. This preference
      * is set to NO_MEDIA_PLAYING after playback has been completed and is set
@@ -111,6 +118,10 @@ public class PlaybackPreferences implements SharedPreferences.OnSharedPreference
         return prefs.getLong(PREF_CURRENTLY_PLAYING_FEEDMEDIA_ID, NO_MEDIA_PLAYING);
     }
 
+    public static long getCurrentlyPlayingQueueId() {
+        return prefs.getLong(PREF_CURRENTLY_PLAYING_FEEDMEDIA_QUEUE_ID, -1);
+    }
+
     public static boolean getCurrentEpisodeIsVideo() {
         return prefs.getBoolean(PREF_CURRENT_EPISODE_IS_VIDEO, false);
     }
@@ -145,6 +156,7 @@ public class PlaybackPreferences implements SharedPreferences.OnSharedPreference
                 FeedMedia feedMedia = (FeedMedia) playable;
                 editor.putLong(PREF_CURRENTLY_PLAYING_FEED_ID, feedMedia.getItem().getFeed().getId());
                 editor.putLong(PREF_CURRENTLY_PLAYING_FEEDMEDIA_ID, feedMedia.getId());
+                editor.putLong(PREF_CURRENTLY_PLAYING_FEEDMEDIA_QUEUE_ID, feedMedia.getQueueId());
             } else {
                 editor.putLong(PREF_CURRENTLY_PLAYING_FEED_ID, NO_MEDIA_PLAYING);
                 editor.putLong(PREF_CURRENTLY_PLAYING_FEEDMEDIA_ID, NO_MEDIA_PLAYING);

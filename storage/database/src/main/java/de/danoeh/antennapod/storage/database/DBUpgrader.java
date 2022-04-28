@@ -330,6 +330,15 @@ class DBUpgrader {
             db.execSQL("ALTER TABLE " + PodDBAdapter.TABLE_NAME_FEED_ITEMS
                     + " ADD COLUMN " + PodDBAdapter.KEY_PODCASTINDEX_CHAPTER_URL + " TEXT");
         }
+        if (oldVersion < 2060001) {
+            db.execSQL(PodDBAdapter.CREATE_TABLE_CUSTOM_QUEUE);
+            db.execSQL(PodDBAdapter.CREATE_TABLE_CUSTOM_QUEUE_ITEMS);
+            db.execSQL("ALTER TABLE " + PodDBAdapter.TABLE_NAME_QUEUE
+                    + " ADD COLUMN " + PodDBAdapter.KEY_CUSTOM_QUEUE_ID + " INTEGER DEFAULT -1");
+            db.execSQL(PodDBAdapter.CREATE_INDEX_CUSTOM_QUEUE_ID);
+            db.execSQL(PodDBAdapter.CREATE_INDEX_CUSTOM_QUEUE_POSITION);
+            db.execSQL(PodDBAdapter.CREATE_INDEX_CUSTOM_QUEUE_FEEDITEM);
+        }
         if (oldVersion < 3010000) {
             db.execSQL("ALTER TABLE " + PodDBAdapter.TABLE_NAME_FEEDS
                     + " ADD COLUMN " + PodDBAdapter.KEY_NEW_EPISODES_ACTION + " INTEGER DEFAULT 0");

@@ -1,0 +1,167 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    tools:ignore="MergeRootFrame">
+
+    <!--
+    This parent FrameLayout is necessary because RecyclerView's ItemAnimator changes alpha values,
+    which conflicts with our played state indicator.
+    -->
+    <LinearLayout
+        android:id="@+id/container"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:baselineAligned="false"
+        android:paddingStart="20dp"
+        android:paddingLeft="12dp"
+        android:paddingEnd="0dp"
+        android:paddingRight="0dp"
+        tools:ignore="UselessParent">
+
+        <LinearLayout
+            android:id="@+id/left_padding"
+            android:layout_width="wrap_content"
+            android:layout_height="match_parent"
+            android:minWidth="4dp">
+
+            <ImageView
+                android:id="@+id/drag_handle"
+                android:layout_width="16dp"
+                android:layout_height="match_parent"
+                android:importantForAccessibility="no"
+                android:scaleType="fitCenter"
+                android:paddingStart="0dp"
+                android:paddingLeft="0dp"
+                android:paddingEnd="4dp"
+                android:paddingRight="4dp"
+                app:srcCompat="?attr/dragview_background"
+                tools:src="@drawable/ic_drag_darktheme"
+                tools:background="@android:color/holo_green_dark" />
+
+            <!-- Needs to have the same width as the action button. Otherwise, the screen jumps around. -->
+            <CheckBox
+                android:id="@+id/selectCheckBox"
+                android:layout_width="60dp"
+                android:layout_height="match_parent"
+                android:visibility="gone" />
+
+        </LinearLayout>
+
+        <androidx.cardview.widget.CardView
+            android:id="@+id/coverHolder"
+            android:layout_width="@dimen/thumbnail_length_queue_item"
+            android:layout_height="@dimen/thumbnail_length_queue_item"
+            android:layout_marginBottom="@dimen/listitem_threeline_verticalpadding"
+            android:layout_marginTop="@dimen/listitem_threeline_verticalpadding"
+            android:layout_marginRight="@dimen/listitem_threeline_textleftpadding"
+            android:layout_marginEnd="@dimen/listitem_threeline_textleftpadding"
+            app:cardBackgroundColor="@color/non_square_icon_background"
+            app:cardCornerRadius="4dp"
+            app:cardPreventCornerOverlap="false"
+            app:cardElevation="0dp">
+
+            <RelativeLayout
+                android:layout_width="match_parent"
+                android:layout_height="match_parent">
+
+                <ImageView
+                    android:id="@+id/imgPlaceholder"
+                    android:layout_width="@dimen/thumbnail_length_queue_item"
+                    android:layout_height="@dimen/thumbnail_length_queue_item"
+                    android:layout_centerVertical="true"
+                    android:background="@color/light_gray"
+                    android:importantForAccessibility="no"
+                    android:maxLines="3"
+                    android:padding="2dp"
+                    android:src="@drawable/ic_add"
+                    android:ellipsize="end" />
+
+                <ImageView
+                    android:id="@+id/imgvCover"
+                    android:layout_width="@dimen/thumbnail_length_queue_item"
+                    android:layout_height="@dimen/thumbnail_length_queue_item"
+                    android:layout_centerVertical="true"
+                    android:background="@color/light_gray"
+                    android:importantForAccessibility="no"
+                    android:visibility="gone"
+                    tools:src="@tools:sample/avatars" />
+
+            </RelativeLayout>
+
+        </androidx.cardview.widget.CardView>
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="@dimen/listitem_threeline_verticalpadding"
+            android:layout_marginRight="@dimen/listitem_threeline_textrightpadding"
+            android:layout_marginEnd="@dimen/listitem_threeline_textrightpadding"
+            android:layout_marginTop="@dimen/listitem_threeline_verticalpadding"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            tools:background="@android:color/holo_red_dark">
+
+            <LinearLayout
+                android:id="@+id/status"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical">
+
+                <TextView
+                    android:id="@+id/feed_title"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/feed_title"
+                    android:layout_marginRight="4dp"
+                    android:layout_marginEnd="4dp"
+                    style="@style/AntennaPod.TextView.ListItemPrimaryTitle"
+                    tools:text="@sample/episodes.json/data/title" />
+
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/configuration"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical">
+
+                <Spinner
+                    android:id="@+id/amount"
+                    android:layout_width="wrap_content"
+                    android:layout_height="30dp"
+                    android:minWidth="50dp"
+                    android:importantForAccessibility="yes"
+                    tools:background="@android:color/holo_blue_light" />
+
+                <Spinner
+                    android:id="@+id/order"
+                    android:layout_width="wrap_content"
+                    android:layout_height="30dp"
+                    android:minWidth="50dp"
+                    android:importantForAccessibility="yes"
+                    tools:background="@android:color/holo_blue_light" />
+
+            </LinearLayout>
+
+        </LinearLayout>
+
+        <ImageView
+            android:id="@+id/action_delete"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:src="@drawable/ic_delete"
+            android:layout_marginRight="@dimen/default_gap"
+            android:layout_marginTop="@dimen/default_gap"
+            android:layout_gravity="top"/>
+
+    </LinearLayout>
+
+</FrameLayout>

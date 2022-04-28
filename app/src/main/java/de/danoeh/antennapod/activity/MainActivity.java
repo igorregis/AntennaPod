@@ -4,6 +4,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.res.Configuration;
+import android.database.Cursor;
 import android.media.AudioManager;
 import android.net.Uri;
 import android.os.Build;
@@ -34,6 +35,19 @@ import com.bumptech.glide.Glide;
 import com.google.android.material.appbar.MaterialToolbar;
 import com.google.android.material.bottomsheet.BottomSheetBehavior;
 import com.google.android.material.snackbar.Snackbar;
+
+import de.danoeh.antennapod.core.preferences.ThemeSwitcher;
+import de.danoeh.antennapod.fragment.AllEpisodesFragment;
+import de.danoeh.antennapod.core.storage.DBReader;
+import de.danoeh.antennapod.fragment.QueueListFragment;
+import de.danoeh.antennapod.fragment.CompletedDownloadsFragment;
+import de.danoeh.antennapod.playback.cast.CastEnabledActivity;
+import org.apache.commons.lang3.ArrayUtils;
+import org.apache.commons.lang3.Validate;
+import org.greenrobot.eventbus.EventBus;
+import org.greenrobot.eventbus.Subscribe;
+import org.greenrobot.eventbus.ThreadMode;
+
 import de.danoeh.antennapod.R;
 import de.danoeh.antennapod.core.preferences.ThemeSwitcher;
 import de.danoeh.antennapod.core.receiver.MediaButtonReceiver;
@@ -55,6 +69,7 @@ import de.danoeh.antennapod.fragment.SubscriptionFragment;
 import de.danoeh.antennapod.fragment.TransitionEffect;
 import de.danoeh.antennapod.playback.cast.CastEnabledActivity;
 import de.danoeh.antennapod.preferences.PreferenceUpgrader;
+import de.danoeh.antennapod.storage.database.PodDBAdapter;
 import de.danoeh.antennapod.storage.preferences.UserPreferences;
 import de.danoeh.antennapod.ui.appstartintent.MainActivityStarter;
 import de.danoeh.antennapod.ui.common.ThemeUtils;
@@ -307,7 +322,7 @@ public class MainActivity extends CastEnabledActivity {
                 fragment = new HomeFragment();
                 break;
             case QueueFragment.TAG:
-                fragment = new QueueFragment();
+                fragment = getQueueFragment();
                 break;
             case InboxFragment.TAG:
                 fragment = new InboxFragment();
@@ -328,9 +343,9 @@ public class MainActivity extends CastEnabledActivity {
                 fragment = new SubscriptionFragment();
                 break;
             default:
-                // default to home screen
-                fragment = new HomeFragment();
-                tag = HomeFragment.TAG;
+                // default to the queue
+                fragment = getQueueFragment();
+                tag = QueueFragment.TAG;
                 args = null;
                 break;
         }
@@ -340,6 +355,13 @@ public class MainActivity extends CastEnabledActivity {
         }
         NavDrawerFragment.saveLastNavFragment(this, tag);
         loadFragment(fragment);
+    }
+
+    @NonNull
+    private Fragment getQueueFragment() {
+        Fragment fragment;
+        fragment = DBReader.getCustomQueues().size() > 0 ? new QueueListFragment() : new QueueFragment();
+        return fragment;
     }
 
     public void loadFeedFragmentById(long feedId, Bundle args) {

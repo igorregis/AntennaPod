@@ -125,6 +125,7 @@ public final class DBTasks {
                 }
             }
             DBWriter.addQueueItem(context, false, itemsToEnqueue.toArray(new FeedItem[0])).get();
+            DBWriter.rebuildCustomQueues(context, true);
         }
         return itemsToEnqueue;
     }

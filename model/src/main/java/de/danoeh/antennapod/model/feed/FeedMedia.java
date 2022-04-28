@@ -6,15 +6,18 @@ import android.media.MediaMetadataRetriever;
 import android.net.Uri;
 import android.os.Parcel;
 import android.os.Parcelable;
-import androidx.annotation.Nullable;
 import android.support.v4.media.MediaBrowserCompat;
 import android.support.v4.media.MediaDescriptionCompat;
-import de.danoeh.antennapod.model.playback.MediaType;
-import de.danoeh.antennapod.model.playback.Playable;
-import de.danoeh.antennapod.model.playback.RemoteMedia;
+
+import androidx.annotation.Nullable;
 
 import java.util.Date;
 import java.util.List;
+
+import de.danoeh.antennapod.model.BuildConfig;
+import de.danoeh.antennapod.model.playback.MediaType;
+import de.danoeh.antennapod.model.playback.Playable;
+import de.danoeh.antennapod.model.playback.RemoteMedia;
 
 public class FeedMedia extends FeedFile implements Playable {
     public static final int FEEDFILETYPE_FEEDMEDIA = 2;
@@ -22,6 +25,7 @@ public class FeedMedia extends FeedFile implements Playable {
     public static final String FILENAME_PREFIX_EMBEDDED_COVER = "metadata-retriever:";
 
     public static final String PREF_MEDIA_ID = "FeedMedia.PrefMediaId";
+    public static final String PREF_MEDIA_QUEUE_ID = "FeedMedia.PrefMediaQueueId";
     private static final String PREF_FEED_ID = "FeedMedia.PrefFeedId";
 
     /**
@@ -49,6 +53,9 @@ public class FeedMedia extends FeedFile implements Playable {
 
     /* Used for loading item when restoring from parcel. */
     private long itemID;
+
+    //It's initialized with the default queue value of -1
+    private long queueId = -1;
 
     public FeedMedia(FeedItem i, String download_url, long size,
                      String mime_type) {
@@ -290,6 +297,7 @@ public class FeedMedia extends FeedFile implements Playable {
         dest.writeLong((playbackCompletionDate != null) ? playbackCompletionDate.getTime() : 0);
         dest.writeInt(played_duration);
         dest.writeLong(lastPlayedTime);
+        dest.writeLong(queueId);
     }
 
     @Override
@@ -300,6 +308,7 @@ public class FeedMedia extends FeedFile implements Playable {
             prefEditor.putLong(PREF_FEED_ID, 0L);
         }
         prefEditor.putLong(PREF_MEDIA_ID, id);
+        prefEditor.putLong(PREF_MEDIA_QUEUE_ID, queueId);
     }
 
     @Override
@@ -345,6 +354,9 @@ public class FeedMedia extends FeedFile implements Playable {
 
     @Override
     public String getLocalMediaUrl() {
+        if (BuildConfig.DEBUG && !file_url.contains(".debug")) {
+            return file_url.replaceAll("de.danoeh.antennapod", "de.danoeh.antennapod.debug");
+        }
         return file_url;
     }
 
@@ -417,6 +429,7 @@ public class FeedMedia extends FeedFile implements Playable {
             FeedMedia result = new FeedMedia(id, null, in.readInt(), in.readInt(), in.readLong(), in.readString(), in.readString(),
                     in.readString(), in.readByte() != 0, new Date(in.readLong()), in.readInt(), in.readLong());
             result.itemID = itemID;
+            result.queueId = in.readLong();
             return result;
         }
 
@@ -434,6 +447,16 @@ public class FeedMedia extends FeedFile implements Playable {
         } else {
             return null;
         }
+    }
+
+    @Override
+    public long getQueueId() {
+        return queueId;
+    }
+
+    @Override
+    public void setQueueId(long queueId) {
+        this.queueId = queueId;
     }
 
     public void setHasEmbeddedPicture(Boolean hasEmbeddedPicture) {

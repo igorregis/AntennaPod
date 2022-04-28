@@ -1,11 +1,12 @@
 package de.danoeh.antennapod.core.storage;
 
 import android.database.Cursor;
+import android.text.TextUtils;
+import android.util.ArrayMap;
+import android.util.Log;
+
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
-import androidx.collection.ArrayMap;
-import android.text.TextUtils;
-import android.util.Log;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -14,7 +15,14 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import de.danoeh.antennapod.core.util.LongList;
+import de.danoeh.antennapod.core.util.comparator.DownloadStatusComparator;
+import de.danoeh.antennapod.core.util.comparator.FeedItemPubdateComparator;
+import de.danoeh.antennapod.core.util.comparator.PlaybackCompletionDateComparator;
+import de.danoeh.antennapod.model.download.DownloadStatus;
 import de.danoeh.antennapod.model.feed.Chapter;
+import de.danoeh.antennapod.model.feed.CustomQueue;
+import de.danoeh.antennapod.model.feed.CustomQueueItem;
 import de.danoeh.antennapod.model.feed.Feed;
 import de.danoeh.antennapod.model.feed.FeedItem;
 import de.danoeh.antennapod.model.feed.FeedItemFilter;
@@ -22,19 +30,16 @@ import de.danoeh.antennapod.model.feed.FeedMedia;
 import de.danoeh.antennapod.model.feed.FeedPreferences;
 import de.danoeh.antennapod.model.feed.SortOrder;
 import de.danoeh.antennapod.model.feed.SubscriptionsFilter;
-import de.danoeh.antennapod.storage.preferences.UserPreferences;
-import de.danoeh.antennapod.model.download.DownloadStatus;
 import de.danoeh.antennapod.storage.database.PodDBAdapter;
-import de.danoeh.antennapod.storage.database.mapper.DownloadStatusCursorMapper;
 import de.danoeh.antennapod.storage.database.mapper.ChapterCursorMapper;
+import de.danoeh.antennapod.storage.database.mapper.CustomQueueCursorMapper;
+import de.danoeh.antennapod.storage.database.mapper.CustomQueueItemCursorMapper;
+import de.danoeh.antennapod.storage.database.mapper.DownloadStatusCursorMapper;
 import de.danoeh.antennapod.storage.database.mapper.FeedCursorMapper;
 import de.danoeh.antennapod.storage.database.mapper.FeedItemCursorMapper;
 import de.danoeh.antennapod.storage.database.mapper.FeedMediaCursorMapper;
 import de.danoeh.antennapod.storage.database.mapper.FeedPreferencesCursorMapper;
-import de.danoeh.antennapod.core.util.LongList;
-import de.danoeh.antennapod.core.util.comparator.DownloadStatusComparator;
-import de.danoeh.antennapod.core.util.comparator.FeedItemPubdateComparator;
-import de.danoeh.antennapod.core.util.comparator.PlaybackCompletionDateComparator;
+import de.danoeh.antennapod.storage.preferences.UserPreferences;
 
 /**
  * Provides methods for reading data from the AntennaPod database.
@@ -198,6 +203,11 @@ public final class DBReader {
 
     @NonNull
     private static List<FeedItem> extractItemlistFromCursor(PodDBAdapter adapter, Cursor cursor) {
+        return extractItemlistFromCursor(adapter, -1, cursor);
+    }
+
+    @NonNull
+    private static List<FeedItem> extractItemlistFromCursor(PodDBAdapter adapter, long queueId, Cursor cursor) {
         List<FeedItem> result = new ArrayList<>(cursor.getCount());
         if (cursor.moveToFirst()) {
             int indexMediaId = cursor.getColumnIndexOrThrow(PodDBAdapter.SELECT_KEY_MEDIA_ID);
@@ -205,9 +215,27 @@ public final class DBReader {
                 FeedItem item = FeedItemCursorMapper.convert(cursor);
                 result.add(item);
                 if (!cursor.isNull(indexMediaId)) {
-                    item.setMedia(FeedMediaCursorMapper.convert(cursor));
+                    FeedMedia media = FeedMediaCursorMapper.convert(cursor);
+                    media.setQueueId(queueId);
+                    item.setMedia(media);
                 }
             } while (cursor.moveToNext());
+        }
+        return result;
+    }
+
+    @NonNull
+    private static List<CustomQueueItem> extractCustomQueueItemFromCursor(Cursor cursor) {
+        List<CustomQueueItem> result = new ArrayList<>(cursor.getCount());
+        try{
+            if (cursor.moveToFirst()) {
+                do {
+                    CustomQueueItem item = CustomQueueItemCursorMapper.convert(cursor);
+                    result.add(item);
+                } while (cursor.moveToNext());
+            }
+        } finally {
+            cursor.close();
         }
         return result;
     }
@@ -272,6 +300,157 @@ public final class DBReader {
             return getQueue(adapter);
         } finally {
             adapter.close();
+        }
+    }
+
+    @NonNull
+    public static List<FeedItem> getQueue(long queueId) {
+        Log.d(TAG, "getQueue(queueId) called");
+
+        PodDBAdapter adapter = PodDBAdapter.getInstance();
+        adapter.open();
+        try {
+            return getQueue(adapter, queueId);
+        } finally {
+            adapter.close();
+        }
+    }
+
+    @NonNull
+    public static List<FeedItem> getQueue(PodDBAdapter adapter, long queueId) {
+        Log.d(TAG, "getQueue(queueId) called");
+
+        Cursor cursor = null;
+        try {
+            cursor = adapter.getQueueCursor(queueId);
+            List<FeedItem> items = extractItemlistFromCursor(adapter, queueId, cursor);
+            loadAdditionalFeedItemListData(items);
+            return items;
+        } finally {
+            if (cursor != null)
+                cursor.close();
+        }
+    }
+
+    @NonNull
+    public static List<CustomQueue> getCustomQueues() {
+        Log.d(TAG, "getCustomQueue() called");
+
+        PodDBAdapter adapter = PodDBAdapter.getInstance();
+        adapter.open();
+        try {
+            return getCustomQueues(adapter);
+        } finally {
+            adapter.close();
+        }
+    }
+
+    public static List<CustomQueue> getCustomQueues(PodDBAdapter adapter) {
+        Log.d(TAG, "getCustomQueue() called");
+
+        ArrayList<CustomQueue> customQueues = new ArrayList<>();
+        Cursor cursor = null;
+        try {
+            cursor = adapter.getCustomQueueCursor();
+            if (cursor.moveToFirst()) {
+                do {
+                    CustomQueue customQueue = CustomQueueCursorMapper.convert(cursor);
+                    customQueues.add(customQueue);
+                } while(cursor.moveToNext());
+            }
+            return customQueues;
+        } finally {
+            if (cursor != null)
+                cursor.close();
+        }
+    }
+
+    /**
+     * Loads the parameters to build a customized queue
+     *
+     * @return A list of CustomQueueItem.
+     * @param customQueueId
+     */
+    @NonNull
+    public static List<CustomQueueItem> getCustomQueueItems(long customQueueId) {
+        Log.d(TAG, "getCustomQueue() called");
+
+        PodDBAdapter adapter = PodDBAdapter.getInstance();
+        adapter.open();
+        try {
+            return getCustomQueueItems(adapter, customQueueId);
+        } finally {
+            adapter.close();
+        }
+    }
+
+    /**
+     * Loads a customized queue
+     *
+     * @return A CustomQueue.
+     * @param customQueueId
+     */
+    @NonNull
+    public static CustomQueue getCustomQueue(long customQueueId) {
+        Log.d(TAG, "getCustomQueue() called");
+
+        PodDBAdapter adapter = PodDBAdapter.getInstance();
+        adapter.open();
+        Cursor customQueueCursor = null;
+        try {
+            customQueueCursor = adapter.getCustomQueueCursor(customQueueId);
+            if (customQueueCursor.moveToFirst()) {
+                CustomQueue customQueue = CustomQueueCursorMapper.convert(customQueueCursor);
+                customQueue.setCustomQueueItems(getCustomQueueItems(adapter, customQueueId));
+                return customQueue;
+            }
+            return new CustomQueue();
+        } finally {
+            adapter.close();
+            if (customQueueCursor != null){
+                customQueueCursor.close();
+            }
+        }
+    }
+
+    static List<CustomQueueItem> getCustomQueueItems(PodDBAdapter adapter, long customQueueId) {
+        Log.d(TAG, "getCustomQueue()");
+        try (Cursor cursor = adapter.getCustomQueueItemsCursor(customQueueId)) {
+            List<CustomQueueItem> items = extractCustomQueueItemFromCursor(cursor);
+            loadAdditionalCustomQueueConfigurationItemListData(adapter, items);
+            return items;
+        }
+    }
+
+    /**
+     * Loads the {@link Feed} object field on {@link CustomQueueItem }
+     * @param adapter
+     * @param items List of previous loaded configuration items
+     */
+    public static void loadAdditionalCustomQueueConfigurationItemListData(PodDBAdapter adapter, List<CustomQueueItem> items) {
+        Map<Long, Feed> tempCache = new HashMap<Long, Feed>();
+        for (CustomQueueItem customQueueConfigurationItem: items) {
+            long feedId = customQueueConfigurationItem.getFeed();
+            if (tempCache.containsKey(feedId))
+            {
+                customQueueConfigurationItem.setFeedObject(tempCache.get(feedId));
+                continue;
+            }
+            Cursor feedCursor = adapter.getFeedCursor(feedId);
+            feedCursor.moveToFirst();
+            /*
+                This count 0 should never happen, because it means that we have failed to remove this configuration when the feed got deleted
+                but removing the item here prevents a crash and makes sure that this configuration get he invalid reference removed when the user saves it
+             */
+            if (feedCursor.getCount() == 0)
+            {
+                items.remove(customQueueConfigurationItem);
+                continue;
+            }
+            Feed feed = FeedCursorMapper.convert(feedCursor);
+            feedCursor.close();
+            tempCache.put(feedId, feed);
+            customQueueConfigurationItem.setFeedObject(feed);
         }
     }
 
@@ -527,8 +706,8 @@ public final class DBReader {
         adapter.open();
         try {
             FeedItem nextItem = null;
-            try (Cursor cursor = adapter.getNextInQueue(item)) {
-                List<FeedItem> list = extractItemlistFromCursor(adapter, cursor);
+            try (Cursor cursor = adapter.getNextInQueue(item, item.getMedia().getQueueId())) {
+                List<FeedItem> list = extractItemlistFromCursor(adapter, item.getMedia().getQueueId(), cursor);
                 if (!list.isEmpty()) {
                     nextItem = list.get(0);
                     loadAdditionalFeedItemListData(list);

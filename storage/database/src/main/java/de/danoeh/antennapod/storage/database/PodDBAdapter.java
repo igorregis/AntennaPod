@@ -17,6 +17,8 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.annotation.VisibleForTesting;
 
+import de.danoeh.antennapod.model.feed.CustomQueue;
+import de.danoeh.antennapod.model.feed.CustomQueueItem;
 import de.danoeh.antennapod.model.feed.FeedCounter;
 import de.danoeh.antennapod.model.feed.FeedFunding;
 
@@ -37,6 +39,7 @@ import de.danoeh.antennapod.model.feed.FeedMedia;
 import de.danoeh.antennapod.model.feed.FeedPreferences;
 import de.danoeh.antennapod.model.download.DownloadStatus;
 import de.danoeh.antennapod.model.feed.SortOrder;
+import de.danoeh.antennapod.storage.database.mapper.FeedCursorMapper;
 import de.danoeh.antennapod.storage.database.mapper.FeedItemFilterQuery;
 import de.danoeh.antennapod.storage.database.mapper.FeedItemSortQuery;
 
@@ -120,6 +123,9 @@ public class PodDBAdapter {
     public static final String KEY_EPISODE_NOTIFICATION = "episode_notification";
     public static final String KEY_NEW_EPISODES_ACTION = "new_episodes_action";
     public static final String KEY_PODCASTINDEX_CHAPTER_URL = "podcastindex_chapter_url";
+    public static final String KEY_AMOUNT = "amount";
+    public static final String KEY_CUSTOM_QUEUE_ID = "custom_queue_id";
+    public static final String KEY_CUSTOM_QUEUE_NAME = "name";
 
     // Table names
     public static final String TABLE_NAME_FEEDS = "Feeds";
@@ -130,10 +136,22 @@ public class PodDBAdapter {
     public static final String TABLE_NAME_QUEUE = "Queue";
     public static final String TABLE_NAME_SIMPLECHAPTERS = "SimpleChapters";
     public static final String TABLE_NAME_FAVORITES = "Favorites";
+    public static final String TABLE_NAME_CUSTOM_QUEUE_ITEMS = "CustomQueueItems";
+    public static final String TABLE_NAME_CUSTOM_QUEUE = "CustomQueue";
 
     // SQL Statements for creating new tables
     private static final String TABLE_PRIMARY_KEY = KEY_ID
             + " INTEGER PRIMARY KEY AUTOINCREMENT ,";
+
+    static final String CREATE_TABLE_CUSTOM_QUEUE = "CREATE TABLE "
+            + TABLE_NAME_CUSTOM_QUEUE + " (" + TABLE_PRIMARY_KEY
+            + KEY_CUSTOM_QUEUE_NAME + " TEXT)";
+
+    static final String CREATE_TABLE_CUSTOM_QUEUE_ITEMS = "CREATE TABLE "
+            + TABLE_NAME_CUSTOM_QUEUE_ITEMS + " (" + TABLE_PRIMARY_KEY
+            + KEY_CUSTOM_QUEUE_ID + " INTEGER, "
+            + KEY_FEED + " INTEGER," + KEY_POSITION + " INTEGER,"
+            + KEY_AMOUNT + " INTEGER," + KEY_SORT_ORDER + " TEXT)";
 
     private static final String CREATE_TABLE_FEEDS = "CREATE TABLE "
             + TABLE_NAME_FEEDS + " (" + TABLE_PRIMARY_KEY + KEY_TITLE
@@ -194,6 +212,7 @@ public class PodDBAdapter {
 
     private static final String CREATE_TABLE_QUEUE = "CREATE TABLE "
             + TABLE_NAME_QUEUE + "(" + KEY_ID + " INTEGER PRIMARY KEY,"
+            + KEY_CUSTOM_QUEUE_ID + " INTEGER DEFAULT -1,"
             + KEY_FEEDITEM + " INTEGER," + KEY_FEED + " INTEGER)";
 
     private static final String CREATE_TABLE_SIMPLECHAPTERS = "CREATE TABLE "
@@ -230,6 +249,18 @@ public class PodDBAdapter {
             + TABLE_NAME_FAVORITES + "(" + KEY_ID + " INTEGER PRIMARY KEY,"
             + KEY_FEEDITEM + " INTEGER," + KEY_FEED + " INTEGER)";
 
+    static final String CREATE_INDEX_CUSTOM_QUEUE_POSITION = "CREATE INDEX "
+            + TABLE_NAME_CUSTOM_QUEUE_ITEMS + "_" + KEY_POSITION + " ON " + TABLE_NAME_CUSTOM_QUEUE_ITEMS + " ("
+            + KEY_POSITION + ")";
+
+    static final String CREATE_INDEX_CUSTOM_QUEUE_ID = "CREATE INDEX "
+            + TABLE_NAME_CUSTOM_QUEUE_ITEMS + "_" + KEY_CUSTOM_QUEUE_ID + " ON " + TABLE_NAME_CUSTOM_QUEUE_ITEMS + " ("
+            + KEY_CUSTOM_QUEUE_ID + ")";
+
+    static final String CREATE_INDEX_CUSTOM_QUEUE_FEEDITEM = "CREATE INDEX "
+            + TABLE_NAME_QUEUE + "_" + KEY_CUSTOM_QUEUE_ID + " ON " + TABLE_NAME_QUEUE + " ("
+            + KEY_CUSTOM_QUEUE_ID + ")";
+
     /**
      * All the tables in the database
      */
@@ -240,12 +271,19 @@ public class PodDBAdapter {
             TABLE_NAME_DOWNLOAD_LOG,
             TABLE_NAME_QUEUE,
             TABLE_NAME_SIMPLECHAPTERS,
-            TABLE_NAME_FAVORITES
+            TABLE_NAME_FAVORITES,
+            TABLE_NAME_CUSTOM_QUEUE_ITEMS
     };
 
     public static final String SELECT_KEY_ITEM_ID = "item_id";
     public static final String SELECT_KEY_MEDIA_ID = "media_id";
     public static final String SELECT_KEY_FEED_ID = "feed_id";
+
+    private static final String SELECT_CUSTOM_QUEUE_CONFIGURATION_ITEMS =
+            "SELECT * FROM " + TABLE_NAME_CUSTOM_QUEUE_ITEMS;
+
+    private static final String SELECT_CUSTOM_QUEUES =
+            "SELECT * FROM " + TABLE_NAME_CUSTOM_QUEUE;
 
     private static final String KEYS_FEED_ITEM_WITHOUT_DESCRIPTION =
             TABLE_NAME_FEED_ITEMS + "." + KEY_ID + " AS " + SELECT_KEY_ITEM_ID + ", "
@@ -828,15 +866,20 @@ public class PodDBAdapter {
     }
 
     public void setQueue(List<FeedItem> queue) {
+        setQueue(queue, -1);
+    }
+
+    public void setQueue(List<FeedItem> queue, long queueId) {
         ContentValues values = new ContentValues();
         try {
             db.beginTransactionNonExclusive();
-            db.delete(TABLE_NAME_QUEUE, null, null);
+            db.delete(TABLE_NAME_QUEUE, KEY_CUSTOM_QUEUE_ID+"=?", new String[]{String.valueOf(queueId)});
             for (int i = 0; i < queue.size(); i++) {
                 FeedItem item = queue.get(i);
                 values.put(KEY_ID, i);
                 values.put(KEY_FEEDITEM, item.getId());
                 values.put(KEY_FEED, item.getFeed().getId());
+                values.put(KEY_CUSTOM_QUEUE_ID, queueId);
                 db.insertWithOnConflict(TABLE_NAME_QUEUE, null, values, SQLiteDatabase.CONFLICT_REPLACE);
             }
             db.setTransactionSuccessful();
@@ -847,8 +890,68 @@ public class PodDBAdapter {
         }
     }
 
+    public void setCustomQueueConfiguration(CustomQueue customQueue) {
+        try {
+            db.beginTransactionNonExclusive();
+            Cursor cursor = getCustomQueueCursor(customQueue.getId());
+            ContentValues values = new ContentValues();
+            if (cursor.moveToFirst()) {
+                cursor.close();
+                values.put(KEY_CUSTOM_QUEUE_NAME, customQueue.getName());
+                db.update(TABLE_NAME_CUSTOM_QUEUE, values, KEY_ID + "=?", new String[]{String.valueOf(customQueue.getId())});
+            } else {
+                cursor.close();
+                values.put(KEY_CUSTOM_QUEUE_NAME, customQueue.getName());
+                customQueue.setId(db.insert(TABLE_NAME_CUSTOM_QUEUE, null, values));
+            }
+            db.execSQL("DELETE FROM " + TABLE_NAME_CUSTOM_QUEUE_ITEMS + " WHERE " + KEY_CUSTOM_QUEUE_ID + "=?", new String[]{String.valueOf(customQueue.getId())});
+            for (int i = 0; i < customQueue.getCustomQueueItems().size(); i++) {
+                CustomQueueItem item = customQueue.getCustomQueueItems().get(i);
+                values = new ContentValues();
+                values.put(KEY_CUSTOM_QUEUE_ID, customQueue.getId());
+                values.put(KEY_FEED, item.getFeed());
+                values.put(KEY_AMOUNT, item.getAmount());
+                values.put(KEY_POSITION, item.getPosition());
+                values.put(KEY_SORT_ORDER, SortOrder.toCodeString(item.getOrder()));
+
+                customQueue.getCustomQueueItems().get(i).setId(db.insertWithOnConflict(TABLE_NAME_CUSTOM_QUEUE_ITEMS, null, values, SQLiteDatabase.CONFLICT_REPLACE));
+            }
+            db.setTransactionSuccessful();
+        } catch (SQLException e) {
+            Log.e(TAG, Log.getStackTraceString(e));
+        } finally {
+            db.endTransaction();
+        }
+    }
+
+    public void setCustomQueueConfiguration(List<CustomQueueItem> queue) {
+        ContentValues values = new ContentValues();
+        try {
+            db.beginTransactionNonExclusive();
+            db.delete(TABLE_NAME_CUSTOM_QUEUE_ITEMS, null, null);
+            for (int i = 0; i < queue.size(); i++) {
+                CustomQueueItem item = queue.get(i);
+                values.put(KEY_ID, i);
+                values.put(KEY_POSITION, i);
+                values.put(KEY_FEED, item.getFeed());
+                values.put(KEY_AMOUNT, item.getAmount());
+                values.put(KEY_SORT_ORDER, SortOrder.toCodeString(item.getOrder()));
+                db.insertWithOnConflict(TABLE_NAME_CUSTOM_QUEUE_ITEMS, null, values, SQLiteDatabase.CONFLICT_REPLACE);
+            }
+            db.setTransactionSuccessful();
+        } catch (SQLException e) {
+            Log.e(TAG, Log.getStackTraceString(e));
+        } finally {
+            db.endTransaction();
+        }
+    }
+
     public void clearQueue() {
-        db.delete(TABLE_NAME_QUEUE, null, null);
+        clearQueue(-1);
+    }
+
+    public void clearQueue(long queueId) {
+        db.delete(TABLE_NAME_QUEUE, KEY_CUSTOM_QUEUE_ID, new String[]{String.valueOf(queueId)});
     }
 
     /**
@@ -981,7 +1084,6 @@ public class PodDBAdapter {
     /**
      * Returns a cursor which contains all feed items in the queue. The returned
      * cursor uses the FEEDITEM_SEL_FI_SMALL selection.
-     * cursor uses the FEEDITEM_SEL_FI_SMALL selection.
      */
     public final Cursor getQueueCursor() {
         final String query = "SELECT " + KEYS_FEED_ITEM_WITHOUT_DESCRIPTION + ", " + KEYS_FEED_MEDIA
@@ -993,8 +1095,55 @@ public class PodDBAdapter {
         return db.rawQuery(query, null);
     }
 
+    public final Cursor getQueueCursor(long queueId) {
+        final String query = SELECT_FEED_ITEMS_AND_MEDIA
+                + " INNER JOIN " + TABLE_NAME_QUEUE
+                + " ON " + SELECT_KEY_ITEM_ID + " = " + TABLE_NAME_QUEUE + "." + KEY_FEEDITEM
+                + " WHERE " + TABLE_NAME_QUEUE + "." + KEY_CUSTOM_QUEUE_ID + "=" + queueId
+                + " ORDER BY " + TABLE_NAME_QUEUE + "." + KEY_ID;
+        return db.rawQuery(query, null);
+    }
+
+    public final Cursor getCustomQueueItemsCursor(long customQueueId) {
+        Cursor cursor = executeCustomQueueItemsQuery(customQueueId);
+        return cursor;
+    }
+
+    private Cursor executeCustomQueueItemsQuery(long customQueueId) {
+        final String query = SELECT_CUSTOM_QUEUE_CONFIGURATION_ITEMS
+                + " WHERE " + KEY_CUSTOM_QUEUE_ID + "=" + customQueueId
+                + " ORDER BY " + TABLE_NAME_CUSTOM_QUEUE_ITEMS + "." + KEY_SORT_ORDER;
+        return db.rawQuery(query, null);
+    }
+
+    public final Cursor getCustomQueueCursor() {
+        final String query = SELECT_CUSTOM_QUEUES
+                + " ORDER BY " + TABLE_NAME_CUSTOM_QUEUE + "." + KEY_CUSTOM_QUEUE_NAME;
+        return db.rawQuery(query, null);
+    }
+
+    public final Cursor getCustomQueueCursor(long customQueueId) {
+        final String query = SELECT_CUSTOM_QUEUES
+                + " WHERE " + TABLE_NAME_CUSTOM_QUEUE + "." + KEY_ID + "=" + customQueueId
+                + " ORDER BY " + TABLE_NAME_CUSTOM_QUEUE + "." + KEY_CUSTOM_QUEUE_NAME;
+        return db.rawQuery(query, null);
+    }
+
     public Cursor getQueueIDCursor() {
         return db.query(TABLE_NAME_QUEUE, new String[]{KEY_FEEDITEM}, null, null, null, null, KEY_ID + " ASC", null);
+    }
+
+    public Cursor getNextInQueue(final FeedItem item, long queueId) {
+        final String query = SELECT_FEED_ITEMS_AND_MEDIA
+                + "INNER JOIN " + TABLE_NAME_QUEUE
+                + " ON " + SELECT_KEY_ITEM_ID + " = " + TABLE_NAME_QUEUE + "." + KEY_FEEDITEM
+                + " WHERE Queue.ID > (SELECT Queue.ID FROM Queue WHERE Queue.FeedItem = "
+                +  item.getId()
+                + " AND " + KEY_CUSTOM_QUEUE_ID + " = " + queueId
+                + ")"
+                + " ORDER BY Queue.ID"
+                + " LIMIT 1";
+        return db.rawQuery(query, null);
     }
 
     public Cursor getNextInQueue(final FeedItem item) {
@@ -1122,15 +1271,15 @@ public class PodDBAdapter {
         return db.rawQuery(query, null);
     }
 
+    public final Cursor getFeedItemCursor(final String id) {
+        return getFeedItemCursor(new String[]{id});
+    }
+
     public final Cursor getFeedCursor(final long id) {
         final String query = "SELECT " + KEYS_FEED
                 + " FROM " + TABLE_NAME_FEEDS
                 + " WHERE " + SELECT_KEY_FEED_ID + " = " + id;
         return db.rawQuery(query, null);
-    }
-
-    public final Cursor getFeedItemCursor(final String id) {
-        return getFeedItemCursor(new String[]{id});
     }
 
     public final Cursor getFeedItemCursor(final String[] ids) {
@@ -1231,7 +1380,11 @@ public class PodDBAdapter {
     }
 
     public int getQueueSize() {
-        final String query = String.format("SELECT COUNT(%s) FROM %s", KEY_ID, TABLE_NAME_QUEUE);
+        return getQueueSize(-1);
+    }
+
+    public int getQueueSize(long customQueueId) {
+        final String query = String.format("SELECT COUNT(%s) FROM %s WHERE %s = %s", KEY_ID, TABLE_NAME_QUEUE, KEY_CUSTOM_QUEUE_ID, customQueueId);
         Cursor c = db.rawQuery(query, null);
         int result = 0;
         if (c.moveToFirst()) {
@@ -1471,6 +1624,8 @@ public class PodDBAdapter {
             db.execSQL(CREATE_TABLE_QUEUE);
             db.execSQL(CREATE_TABLE_SIMPLECHAPTERS);
             db.execSQL(CREATE_TABLE_FAVORITES);
+            db.execSQL(CREATE_TABLE_CUSTOM_QUEUE);
+            db.execSQL(CREATE_TABLE_CUSTOM_QUEUE_ITEMS);
 
             db.execSQL(CREATE_INDEX_FEEDITEMS_FEED);
             db.execSQL(CREATE_INDEX_FEEDITEMS_PUBDATE);
@@ -1478,6 +1633,9 @@ public class PodDBAdapter {
             db.execSQL(CREATE_INDEX_FEEDMEDIA_FEEDITEM);
             db.execSQL(CREATE_INDEX_QUEUE_FEEDITEM);
             db.execSQL(CREATE_INDEX_SIMPLECHAPTERS_FEEDITEM);
+            db.execSQL(CREATE_INDEX_CUSTOM_QUEUE_ID);
+            db.execSQL(CREATE_INDEX_CUSTOM_QUEUE_POSITION);
+            db.execSQL(CREATE_INDEX_CUSTOM_QUEUE_FEEDITEM);
         }
 
         @Override

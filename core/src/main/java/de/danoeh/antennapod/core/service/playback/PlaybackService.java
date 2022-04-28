@@ -68,11 +68,6 @@ import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 import de.danoeh.antennapod.core.R;
-import de.danoeh.antennapod.event.MessageEvent;
-import de.danoeh.antennapod.event.playback.PlaybackPositionEvent;
-import de.danoeh.antennapod.event.settings.SkipIntroEndingChangedEvent;
-import de.danoeh.antennapod.event.settings.SpeedPresetChangedEvent;
-import de.danoeh.antennapod.event.settings.VolumeAdaptionChangedEvent;
 import de.danoeh.antennapod.core.preferences.PlaybackPreferences;
 import de.danoeh.antennapod.core.preferences.SleepTimerPreferences;
 import de.danoeh.antennapod.core.receiver.MediaButtonReceiver;
@@ -86,12 +81,26 @@ import de.danoeh.antennapod.core.util.NetworkUtils;
 import de.danoeh.antennapod.core.util.gui.NotificationUtils;
 import de.danoeh.antennapod.core.util.playback.PlaybackServiceStarter;
 import de.danoeh.antennapod.core.widget.WidgetUpdater;
+import de.danoeh.antennapod.event.MessageEvent;
+import de.danoeh.antennapod.event.PlayerErrorEvent;
+import de.danoeh.antennapod.event.playback.BufferUpdateEvent;
+import de.danoeh.antennapod.event.playback.PlaybackPositionEvent;
+import de.danoeh.antennapod.event.playback.PlaybackServiceEvent;
+import de.danoeh.antennapod.event.playback.SleepTimerUpdatedEvent;
+import de.danoeh.antennapod.event.settings.SkipIntroEndingChangedEvent;
+import de.danoeh.antennapod.event.settings.SpeedPresetChangedEvent;
+import de.danoeh.antennapod.event.settings.VolumeAdaptionChangedEvent;
 import de.danoeh.antennapod.model.feed.Feed;
 import de.danoeh.antennapod.model.feed.FeedItem;
+import de.danoeh.antennapod.model.feed.FeedItemFilter;
 import de.danoeh.antennapod.model.feed.FeedMedia;
 import de.danoeh.antennapod.model.feed.FeedPreferences;
 import de.danoeh.antennapod.model.playback.MediaType;
 import de.danoeh.antennapod.model.playback.Playable;
+import de.danoeh.antennapod.playback.base.PlaybackServiceMediaPlayer;
+import de.danoeh.antennapod.playback.base.PlayerStatus;
+import de.danoeh.antennapod.playback.cast.CastPsmp;
+import de.danoeh.antennapod.playback.cast.CastStateListener;
 import de.danoeh.antennapod.ui.appstartintent.MainActivityStarter;
 import de.danoeh.antennapod.ui.appstartintent.VideoPlayerActivityStarter;
 import io.reactivex.Completable;
@@ -326,10 +335,10 @@ public class PlaybackService extends MediaBrowserServiceCompat {
                 null); // Bundle of optional extras
     }
 
-    private void loadQueueForMediaSession() {
+    private void loadQueueForMediaSession(long queueId) {
         Single.<List<MediaSessionCompat.QueueItem>>create(emitter -> {
             List<MediaSessionCompat.QueueItem> queueItems = new ArrayList<>();
-            for (FeedItem feedItem : DBReader.getQueue()) {
+            for (FeedItem feedItem : DBReader.getQueue(queueId)) {
                 if (feedItem.getMedia() != null) {
                     MediaDescriptionCompat mediaDescription = feedItem.getMedia().getMediaItem().getDescription();
                     queueItems.add(new MediaSessionCompat.QueueItem(mediaDescription, feedItem.getId()));
@@ -501,7 +510,9 @@ public class PlaybackService extends MediaBrowserServiceCompat {
                 Observable.fromCallable(
                         () -> {
                             if (playable instanceof FeedMedia) {
-                                return DBReader.getFeedMedia(((FeedMedia) playable).getId());
+                                FeedMedia feedMedia = DBReader.getFeedMedia(((FeedMedia) playable).getId());
+                                feedMedia.setQueueId(playable.getQueueId());
+                                return feedMedia;
                             } else {
                                 return playable;
                             }
@@ -740,7 +751,7 @@ public class PlaybackService extends MediaBrowserServiceCompat {
         updateNotificationAndMediaSession(getPlayable());
         stateManager.stopForeground(!UserPreferences.isPersistNotify());
     }
-
+    
     private final PlaybackServiceTaskManager.PSTMCallback taskManagerCallback = new PlaybackServiceTaskManager.PSTMCallback() {
         @Override
         public void positionSaverTick() {
@@ -805,7 +816,7 @@ public class PlaybackService extends MediaBrowserServiceCompat {
                         EventBus.getDefault().post(new MessageEvent(getString(R.string.sleep_timer_enabled_label),
                                 PlaybackService.this::disableSleepTimer));
                     }
-                    loadQueueForMediaSession();
+                    loadQueueForMediaSession(newInfo.playable.getQueueId());
                     break;
                 case ERROR:
                     PlaybackPreferences.writeNoMediaPlaying();

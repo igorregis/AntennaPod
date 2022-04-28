@@ -42,6 +42,7 @@ public class RemoteMedia implements Playable {
     private int duration;
     private int position;
     private long lastPlayedTime;
+    private long queueId;
 
     public RemoteMedia(String downloadUrl, String itemId, String feedUrl, String feedTitle,
                        String episodeTitle, String episodeLink, String feedAuthor,
@@ -233,6 +234,16 @@ public class RemoteMedia implements Playable {
     @Nullable
     public String getImageLocation() {
         return imageUrl;
+    }
+
+    @Override
+    public long getQueueId() {
+        return this.queueId;
+    }
+
+    @Override
+    public void setQueueId(long queueId) {
+        this.queueId = queueId;
     }
 
     @Override

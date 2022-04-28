@@ -20,32 +20,21 @@ import java.lang.ref.WeakReference;
 import java.util.ArrayList;
 import java.util.List;
 
-import android.view.ContextMenu;
-import android.view.MenuInflater;
-import androidx.annotation.Nullable;
+public class FeedSearchResultAdapter extends RecyclerView.Adapter<FeedSearchResultAdapter.Holder> {
 
-public class HorizontalFeedListAdapter extends RecyclerView.Adapter<HorizontalFeedListAdapter.Holder>
-        implements View.OnCreateContextMenuListener  {
     private final WeakReference<MainActivity> mainActivityRef;
 
     private int positionToConfigure;
     private boolean backOnClick = false;
     private final List<Feed> data = new ArrayList<>();
-    private int dummyViews = 0;
-    private Feed longPressedItem;
 
-
-    public HorizontalFeedListAdapter(MainActivity mainActivity) {
+    public FeedSearchResultAdapter(MainActivity mainActivity) {
         this.mainActivityRef = new WeakReference<>(mainActivity);
     }
 
-    public HorizontalFeedListAdapter(MainActivity mainActivity, boolean backOnClick) {
+    public FeedSearchResultAdapter(MainActivity mainActivity, boolean backOnClick) {
         this.mainActivityRef = new WeakReference<>(mainActivity);
         this.backOnClick = backOnClick;
-    }
-
-    public void setDummyViews(int dummyViews) {
-        this.dummyViews = dummyViews;
     }
 
     @SuppressLint("NotifyDataSetChanged")
@@ -58,20 +47,12 @@ public class HorizontalFeedListAdapter extends RecyclerView.Adapter<HorizontalFe
     @NonNull
     @Override
     public Holder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
-        View convertView = View.inflate(mainActivityRef.get(), R.layout.horizontal_feed_item, null);
+        View convertView = View.inflate(mainActivityRef.get(), R.layout.searchlist_item_feed, null);
         return new Holder(convertView);
     }
 
     @Override
     public void onBindViewHolder(@NonNull Holder holder, int position) {
-        if (position >= data.size()) {
-            holder.itemView.setAlpha(0.1f);
-            Glide.with(mainActivityRef.get()).clear(holder.imageView);
-            holder.imageView.setImageResource(R.color.medium_gray);
-            return;
-        }
-
-        holder.itemView.setAlpha(1.0f);
         final Feed podcast = data.get(position);
         holder.imageView.setContentDescription(podcast.getTitle());
         if (backOnClick) {
@@ -90,13 +71,6 @@ public class HorizontalFeedListAdapter extends RecyclerView.Adapter<HorizontalFe
                     mainActivityRef.get().loadChildFragment(FeedItemlistFragment.newInstance(podcast.getId())));
         }
 
-        holder.imageView.setOnCreateContextMenuListener(this);
-        holder.imageView.setOnLongClickListener(v -> {
-            int currentItemPosition = holder.getBindingAdapterPosition();
-            longPressedItem = data.get(currentItemPosition);
-            return false;
-        });
-
         Glide.with(mainActivityRef.get())
                 .load(podcast.getImageUrl())
                 .apply(new RequestOptions()
@@ -106,36 +80,18 @@ public class HorizontalFeedListAdapter extends RecyclerView.Adapter<HorizontalFe
                 .into(holder.imageView);
     }
 
-    @Nullable
-    public Feed getLongPressedItem() {
-        return longPressedItem;
-    }
-
     @Override
     public long getItemId(int position) {
-        if (position >= data.size()) {
-            return RecyclerView.NO_ID; // Dummy views
-        }
         return data.get(position).getId();
     }
 
     @Override
     public int getItemCount() {
-        return dummyViews + data.size();
+        return data.size();
     }
 
     public void setPositionToConfigure(int positionToConfigure) {
         this.positionToConfigure = positionToConfigure;
-    }
-
-    @Override
-    public void onCreateContextMenu(ContextMenu contextMenu, View view, ContextMenu.ContextMenuInfo contextMenuInfo) {
-        MenuInflater inflater = mainActivityRef.get().getMenuInflater();
-        if (longPressedItem == null) {
-            return;
-        }
-        inflater.inflate(R.menu.nav_feed_context, contextMenu);
-        contextMenu.setHeaderTitle(longPressedItem.getTitle());
     }
 
     static class Holder extends RecyclerView.ViewHolder {

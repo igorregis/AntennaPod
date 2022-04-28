@@ -19,7 +19,7 @@ public abstract class SelectableAdapter<T extends RecyclerView.ViewHolder> exten
     public static final int COUNT_AUTOMATICALLY = -1;
     private ActionMode actionMode;
     private final HashSet<Long> selectedIds = new HashSet<>();
-    private final Activity activity;
+    protected final Activity activity;
     private OnSelectModeListener onSelectModeListener;
     boolean shouldSelectLazyLoadedItems = false;
     private int totalNumberOfItems = COUNT_AUTOMATICALLY;

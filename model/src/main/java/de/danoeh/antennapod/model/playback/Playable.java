@@ -151,4 +151,11 @@ public interface Playable extends Parcelable, Serializable {
     @Nullable
     String getImageLocation();
 
+    /**
+     * Return the queue id for this playable, so we can find the next playable item
+     * @return
+     */
+    long getQueueId();
+
+    void  setQueueId(long queueId);
 }

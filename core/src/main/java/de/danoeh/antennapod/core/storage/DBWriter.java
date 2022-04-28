@@ -10,6 +10,11 @@ import androidx.core.app.NotificationManagerCompat;
 
 import de.danoeh.antennapod.net.download.serviceinterface.DownloadServiceInterface;
 import de.danoeh.antennapod.core.service.playback.PlaybackServiceInterface;
+import de.danoeh.antennapod.core.service.download.DownloadService;
+import de.danoeh.antennapod.event.CustomQueueEvent;
+import de.danoeh.antennapod.model.feed.CustomQueue;
+import de.danoeh.antennapod.model.feed.CustomQueueItem;
+import de.danoeh.antennapod.model.feed.FeedItemFilter;
 import de.danoeh.antennapod.storage.database.PodDBAdapter;
 import org.greenrobot.eventbus.EventBus;
 
@@ -442,6 +447,51 @@ public class DBWriter {
         });
     }
 
+    public static Future<?> rebuildCustomQueues(final Context context, final boolean performAutoDownload) {
+        return dbExec.submit(() -> {
+            FeedItemFilter feedFilter = new FeedItemFilter(FeedItemFilter.UNPLAYED);
+            final PodDBAdapter adapter = PodDBAdapter.getInstance();
+            List<CustomQueue> customQueues = DBReader.getCustomQueues(adapter);
+            for (CustomQueue customQueue : customQueues) {
+                List<CustomQueueItem> customQueueItems = DBReader.getCustomQueueItems(adapter, customQueue.getId());
+                if (customQueueItems.size() > 0) {
+                    //if we have a configuration to this queue, we will clear it to rebuild it
+                    List<FeedItem> oldQueue, queue = DBReader.getQueue(customQueue.getId());
+                    oldQueue = new ArrayList<>(queue);
+                    queue.clear();
+                    DBReader.loadAdditionalCustomQueueConfigurationItemListData(adapter, customQueueItems);
+                    for (CustomQueueItem customQueueItem : customQueueItems) {
+                        List<FeedItem> feedItems = DBReader.getFeedItemList(customQueueItem.getFeedObject(), feedFilter);
+                        for (int i = 0; i < feedItems.size(); i++) {
+                            FeedItem feedItem = feedItems.get(i);
+                            if (!customQueueItem.getFeedObject().getPreferences().getFilter().shouldAutoDownload(feedItem)) {
+                                feedItems.remove(i--);
+                            }
+                        }
+                        if (customQueueItem.getOrder() == SortOrder.DATE_NEW_OLD) {
+                            for (int i = 0, n = 0; i < customQueueItem.getAmount() && n < feedItems.size(); i++, n++) {
+                                FeedItem item = feedItems.get(i);
+                                queue.add(item);
+                            }
+                        } else {
+                            for (long n = customQueueItem.getAmount(), i = feedItems.size() - 1; n > 0 && i >= 0; n--, i--) {
+                                FeedItem item = feedItems.get((int) i);
+                                queue.add(item);
+                            }
+                        }
+                    }
+                    if (!oldQueue.equals(queue)){
+                        adapter.setQueue(queue, customQueue.getId());
+                        EventBus.getDefault().post(QueueEvent.sorted(queue));
+                    }
+                }
+            }
+            if (performAutoDownload) {
+                DBTasks.autodownloadUndownloadedItems(context);
+            }
+        });
+    }
+
     /**
      * Sorts the queue depending on the configured sort order.
      * If the queue is not in keep sorted mode, nothing happens.
@@ -492,7 +542,11 @@ public class DBWriter {
      */
     public static Future<?> removeQueueItem(final Context context,
                                             final boolean performAutoDownload, final FeedItem item) {
-        return dbExec.submit(() -> removeQueueItemSynchronous(context, performAutoDownload, item.getId()));
+        return dbExec.submit(() -> {
+            removeQueueItemSynchronous(context, performAutoDownload, item.getId());
+            //TODO Rever isso para manter o comportamento de consumir a fila, o ideal é o método acima remover o item das filas e não tocar nelas, hoje ele está limpando-as
+            rebuildCustomQueues(context, performAutoDownload);
+        });
     }
 
     public static Future<?> removeQueueItem(final Context context, final boolean performAutoDownload,
@@ -633,6 +687,34 @@ public class DBWriter {
     }
 
     /**
+     * Changes the position of a Feed in the custom queue configuration.
+     *
+     * @param customQueueId
+     * @param from            Source index. Must be in range 0..number.of.feeds-1.
+     * @param to              Destination index. Must be in range 0..number.of.feeds-1.
+     * @param broadcastUpdate true if this operation should trigger a QueueUpdateBroadcast. This option should be set to
+     *                        false if the caller wants to avoid unexpected updates of the GUI.
+     * @throws IndexOutOfBoundsException if (to < 0 || to >= queue.size()) || (from < 0 || from >= queue.size())
+     */
+    public static Future<?> moveCustomQueueConfigurationItem(long customQueueId, final int from,
+                                                             final int to, final boolean broadcastUpdate) {
+        return dbExec.submit(() -> moveCustomQueueConfigurationItemHelper(customQueueId, from, to, broadcastUpdate));
+    }
+
+    public static void saveCustomQueue(CustomQueue customQueue) {
+        dbExec.submit(() -> {
+            final PodDBAdapter adapter = PodDBAdapter.getInstance();
+            try {
+                adapter.open();
+                adapter.setCustomQueueConfiguration(customQueue);
+            } finally {
+                adapter.close();
+            }
+        });
+    }
+
+
+    /**
      * Changes the position of a FeedItem in the queue.
      * <p/>
      * This function must be run using the ExecutorService (dbExec).
@@ -672,6 +754,40 @@ public class DBWriter {
             adapter.resetPagedFeedPage(feed);
             adapter.close();
         });
+    }
+
+    /**
+     * Changes the position of a {@link CustomQueueItem} in the configuration.
+     * <p/>
+     * This function must be run using the ExecutorService (dbExec).
+     *
+     * @param customQueueId
+     * @param from            Source index. Must be in range 0..number.of.feeds-1.
+     * @param to              Destination index. Must be in range 0..number.of.feeds-1.
+     * @param broadcastUpdate true if this operation should trigger a QueueUpdateBroadcast. This option should be set to
+     *                        false if the caller wants to avoid unexpected updates of the GUI.
+     * @throws IndexOutOfBoundsException if (to < 0 || to >= queue.size()) || (from < 0 || from >= queue.size())
+     */
+    private static void moveCustomQueueConfigurationItemHelper(long customQueueId, final int from,
+                                                               final int to, final boolean broadcastUpdate) {
+        final PodDBAdapter adapter = PodDBAdapter.getInstance();
+        adapter.open();
+        final List<CustomQueueItem> queue = DBReader.getCustomQueueItems(adapter, customQueueId);
+
+        if (queue != null) {
+            if (from >= 0 && from < queue.size() && to >= 0 && to < queue.size()) {
+                final CustomQueueItem item = queue.remove(from);
+                queue.add(to, item);
+
+                adapter.setCustomQueueConfiguration(queue);
+                if (broadcastUpdate) {
+                    EventBus.getDefault().post(CustomQueueEvent.moved(item, to));
+                }
+            }
+        } else {
+            Log.e(TAG, "moveQueueItemHelper: Could not load queue");
+        }
+        adapter.close();
     }
 
     /*
@@ -927,7 +1043,8 @@ public class DBWriter {
     public static Future<?> reorderQueue(@Nullable SortOrder sortOrder, final boolean broadcastUpdate) {
         if (sortOrder == null) {
             Log.w(TAG, "reorderQueue() - sortOrder is null. Do nothing.");
-            return dbExec.submit(() -> { });
+            return dbExec.submit(() -> {
+            });
         }
         final Permutor<FeedItem> permutor = FeedItemPermutors.getPermutor(sortOrder);
         return dbExec.submit(() -> {
@@ -968,7 +1085,6 @@ public class DBWriter {
 
     /**
      * Set item sort order of the feed
-     *
      */
     public static Future<?> setFeedItemSortOrder(long feedId, @Nullable SortOrder sortOrder) {
         return dbExec.submit(() -> {

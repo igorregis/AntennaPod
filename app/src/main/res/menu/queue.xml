@@ -32,4 +32,16 @@
         android:title="@string/clear_queue_label"
         custom:showAsAction="collapseActionView"
         android:icon="@drawable/ic_check"/>
+
+    <item
+        android:id="@+id/new_custom_queue"
+        android:title="@string/new_custom_queue">
+    </item>
+
+    <item
+        android:id="@+id/edit_custom_queue"
+        android:title="@string/edit_custom_queue"
+        android:visible="false">
+    </item>
+
 </menu>
